@@ -2,11 +2,13 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using HomeBankingBackend.Data;
 using HomeBankingBackend.Models;
+using Microsoft.AspNetCore.Authorization;
 
 namespace HomeBankingBackend.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [Authorize]
     public class TransactionsController : ControllerBase
     {
         private readonly AppDbContext _context;
@@ -72,6 +74,72 @@ namespace HomeBankingBackend.Controllers
             }
         }
 
+        [HttpPost("Deposit")]
+        public async Task<IActionResult> Deposit([FromBody] AccountOperationDto request)
+        {
+            if (request.Amount <= 0)
+                return BadRequest("El monto a depositar debe ser mayor a cero.");
+
+            // 1. Buscamos la cuenta
+            var account = await _context.Accounts.FindAsync(request.AccountId);
+            if (account == null)
+                return NotFound("La cuenta no existe.");
+
+            // 2. Sumamos la plata
+            account.Balance += request.Amount;
+
+            // 3. Creamos el comprobante
+            var transactionRecord = new Transaction
+            {
+                Amount = request.Amount,
+                Type = TransactionType.Credit, // Usamos tu Enum para ingresos
+                Date = DateTime.UtcNow,
+                // Como es efectivo entrando, asignamos la misma cuenta en ambos lados 
+                // para evitar errores de base de datos si las columnas no permiten valores nulos.
+                SourceAccountId = request.AccountId, 
+                DestinationAccountId = request.AccountId 
+            };
+
+            _context.Transactions.Add(transactionRecord);
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Depósito exitoso", newBalance = account.Balance });
+        }
+
+        [HttpPost("Withdraw")]
+        public async Task<IActionResult> Withdraw([FromBody] AccountOperationDto request)
+        {
+            if (request.Amount <= 0)
+                return BadRequest("El monto a retirar debe ser mayor a cero.");
+
+            // 1. Buscamos la cuenta
+            var account = await _context.Accounts.FindAsync(request.AccountId);
+            if (account == null)
+                return NotFound("La cuenta no existe.");
+
+            // 2. Verificamos que tenga saldo suficiente
+            if (account.Balance < request.Amount)
+                return BadRequest("Fondos insuficientes para realizar el retiro.");
+
+            // 3. Restamos la plata
+            account.Balance -= request.Amount;
+
+            // 4. Creamos el comprobante
+            var transactionRecord = new Transaction
+            {
+                Amount = request.Amount,
+                Type = TransactionType.Debit, // Usamos tu Enum para egresos
+                Date = DateTime.UtcNow,
+                SourceAccountId = request.AccountId,
+                DestinationAccountId = request.AccountId 
+            };
+
+            _context.Transactions.Add(transactionRecord);
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Retiro exitoso", newBalance = account.Balance });
+        }
+
         // --- ACÁ EMPIEZA EL NUEVO MÉTODO GET ---
 
         // GET: api/Transactions/Account/1
@@ -100,6 +168,13 @@ namespace HomeBankingBackend.Controllers
     {
         public int SourceAccountId { get; set; }
         public int DestinationAccountId { get; set; }
+        public decimal Amount { get; set; }
+    }
+
+    // Objeto para depósitos y retiros
+    public class AccountOperationDto
+    {
+        public int AccountId { get; set; }
         public decimal Amount { get; set; }
     }
 }
