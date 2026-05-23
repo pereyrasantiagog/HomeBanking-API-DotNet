@@ -1,11 +1,24 @@
 using Microsoft.EntityFrameworkCore;
 using HomeBankingBackend.Data;
+using HomeBankingBackend.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// --- INICIO CONFIGURACIÓN CORS ---
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowReactFrontend", policy =>
+    {
+        policy.WithOrigins("http://localhost:3000", "http://localhost:5173")
+              .AllowAnyMethod()
+              .AllowAnyHeader();
+    });
+});
+// --- FIN CONFIGURACIÓN CORS ---
 
 // --- INICIO CONFIGURACIÓN JWT ---
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -19,7 +32,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateIssuerSigningKey = true,
             ValidIssuer = builder.Configuration["Jwt:Issuer"],
             ValidAudience = builder.Configuration["Jwt:Audience"],
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]))
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"] ?? ""))
         };
     });
 // --- FIN CONFIGURACIÓN JWT ---
@@ -32,6 +45,9 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 {
     options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString));
 });
+
+// Registrar la capa de servicios
+builder.Services.AddScoped<ITransactionService, TransactionService>();
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -80,6 +96,10 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+// La regla de oro: UseCors DEBE ir antes de UseAuthentication y UseAuthorization
+app.UseCors("AllowReactFrontend");
+
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();

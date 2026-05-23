@@ -1,9 +1,11 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using HomeBankingBackend.Data;
 using HomeBankingBackend.Models;
 using Microsoft.AspNetCore.Authorization;
 using System.Security.Claims;
+using HomeBankingBackend.Services;
+using System.Threading.Tasks;
+using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 
 namespace HomeBankingBackend.Controllers
 {
@@ -12,220 +14,109 @@ namespace HomeBankingBackend.Controllers
     [Authorize]
     public class TransactionsController : ControllerBase
     {
-        private readonly AppDbContext _context;
+        private readonly ITransactionService _transactionService;
 
-        public TransactionsController(AppDbContext context)
+        public TransactionsController(ITransactionService transactionService)
         {
-            _context = context;
+            _transactionService = transactionService;
+        }
+
+        private int GetLoggedInUserId()
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (int.TryParse(userIdClaim, out int loggedInUserId))
+            {
+                return loggedInUserId;
+            }
+            return 0; // Return 0 or handle invalid token appropriately
+        }
+
+        private IActionResult HandleResult(ServiceResult result)
+        {
+            if (result.Success)
+            {
+                return Ok(result.Data ?? new { message = result.Message });
+            }
+
+            return result.StatusCode switch
+            {
+                400 => BadRequest(result.Message),
+                403 => Forbid(),
+                404 => NotFound(result.Message),
+                _ => StatusCode(500, result.Message)
+            };
         }
 
         [HttpPost("Transfer")]
         public async Task<IActionResult> Transfer([FromBody] TransferDto request)
         {
-            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (!int.TryParse(userIdClaim, out int loggedInUserId))
-            {
-                return Unauthorized("Token inválido o malformado.");
-            }
+            int loggedInUserId = GetLoggedInUserId();
+            if (loggedInUserId == 0) return Unauthorized("Token inválido o malformado.");
 
-            // 1. Validaciones básicas
-            if (request.Amount <= 0)
-                return BadRequest("El monto a transferir debe ser mayor a cero.");
+            var result = await _transactionService.TransferAsync(
+                loggedInUserId, request.SourceAccountId, request.DestinationAccountId, request.Amount);
 
-            if (request.SourceAccountId == request.DestinationAccountId)
-                return BadRequest("No puedes transferir dinero a la misma cuenta.");
-
-            // 2. Iniciamos la transacción segura de base de datos
-            using var dbTransaction = await _context.Database.BeginTransactionAsync();
-
-            try
-            {
-                // Buscar ambas cuentas
-                var sourceAccount = await _context.Accounts.FindAsync(request.SourceAccountId);
-                var destinationAccount = await _context.Accounts.FindAsync(request.DestinationAccountId);
-
-                if (sourceAccount == null || destinationAccount == null)
-                    return NotFound("Una o ambas cuentas no existen.");
-
-                if (sourceAccount.UserId != loggedInUserId)
-                {
-                    return Forbid();
-                }
-
-                // Verificar si hay saldo suficiente
-                if (sourceAccount.Balance < request.Amount)
-                    return BadRequest("Fondos insuficientes en la cuenta de origen.");
-
-                // 3. Actualizar los saldos en memoria
-                sourceAccount.Balance -= request.Amount;
-                destinationAccount.Balance += request.Amount;
-
-                // 4. Crear el registro del movimiento
-                var transactionRecord = new Transaction
-                {
-                    Amount = request.Amount,
-                    Type = TransactionType.Transfer,
-                    Date = DateTime.UtcNow,
-                    SourceAccountId = request.SourceAccountId,
-                    DestinationAccountId = request.DestinationAccountId
-                };
-
-                _context.Transactions.Add(transactionRecord);
-
-                // 5. Guardar los cambios y confirmar la transacción
-                await _context.SaveChangesAsync();
-                await dbTransaction.CommitAsync();
-
-                return Ok(new { message = "Transferencia exitosa", transactionId = transactionRecord.Id });
-            }
-            catch (Exception)
-            {
-                // Si algo explota, deshacemos todos los cambios para no perder dinero
-                await dbTransaction.RollbackAsync();
-                return StatusCode(500, "Ocurrió un error interno al procesar la transferencia.");
-            }
+            return HandleResult(result);
         }
 
         [HttpPost("Deposit")]
         public async Task<IActionResult> Deposit([FromBody] AccountOperationDto request)
         {
-            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (!int.TryParse(userIdClaim, out int loggedInUserId))
-            {
-                return Unauthorized("Token inválido o malformado.");
-            }
+            int loggedInUserId = GetLoggedInUserId();
+            if (loggedInUserId == 0) return Unauthorized("Token inválido o malformado.");
 
-            if (request.Amount <= 0)
-                return BadRequest("El monto a depositar debe ser mayor a cero.");
+            var result = await _transactionService.DepositAsync(
+                loggedInUserId, request.AccountId, request.Amount);
 
-            // 1. Buscamos la cuenta
-            var account = await _context.Accounts.FindAsync(request.AccountId);
-            if (account == null)
-                return NotFound("La cuenta no existe.");
-
-            if (account.UserId != loggedInUserId)
-            {
-                return Forbid();
-            }
-
-            // 2. Sumamos la plata
-            account.Balance += request.Amount;
-
-            // 3. Creamos el comprobante
-            var transactionRecord = new Transaction
-            {
-                Amount = request.Amount,
-                Type = TransactionType.Credit, // Usamos tu Enum para ingresos
-                Date = DateTime.UtcNow,
-                // Como es efectivo entrando, asignamos la misma cuenta en ambos lados 
-                // para evitar errores de base de datos si las columnas no permiten valores nulos.
-                SourceAccountId = request.AccountId, 
-                DestinationAccountId = request.AccountId 
-            };
-
-            _context.Transactions.Add(transactionRecord);
-            await _context.SaveChangesAsync();
-
-            return Ok(new { message = "Depósito exitoso", newBalance = account.Balance });
+            return HandleResult(result);
         }
 
         [HttpPost("Withdraw")]
         public async Task<IActionResult> Withdraw([FromBody] AccountOperationDto request)
         {
-            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (!int.TryParse(userIdClaim, out int loggedInUserId))
-            {
-                return Unauthorized("Token inválido o malformado.");
-            }
+            int loggedInUserId = GetLoggedInUserId();
+            if (loggedInUserId == 0) return Unauthorized("Token inválido o malformado.");
 
-            if (request.Amount <= 0)
-                return BadRequest("El monto a retirar debe ser mayor a cero.");
+            var result = await _transactionService.WithdrawAsync(
+                loggedInUserId, request.AccountId, request.Amount);
 
-            // 1. Buscamos la cuenta
-            var account = await _context.Accounts.FindAsync(request.AccountId);
-            if (account == null)
-                return NotFound("La cuenta no existe.");
-
-            if (account.UserId != loggedInUserId)
-            {
-                return Forbid();
-            }
-
-            // 2. Verificamos que tenga saldo suficiente
-            if (account.Balance < request.Amount)
-                return BadRequest("Fondos insuficientes para realizar el retiro.");
-
-            // 3. Restamos la plata
-            account.Balance -= request.Amount;
-
-            // 4. Creamos el comprobante
-            var transactionRecord = new Transaction
-            {
-                Amount = request.Amount,
-                Type = TransactionType.Debit, // Usamos tu Enum para egresos
-                Date = DateTime.UtcNow,
-                SourceAccountId = request.AccountId,
-                DestinationAccountId = request.AccountId 
-            };
-
-            _context.Transactions.Add(transactionRecord);
-            await _context.SaveChangesAsync();
-
-            return Ok(new { message = "Retiro exitoso", newBalance = account.Balance });
+            return HandleResult(result);
         }
 
-        // --- ACÁ EMPIEZA EL NUEVO MÉTODO GET ---
-
-        // GET: api/Transactions/Account/1
-        [HttpGet("Account/{accountId}")]
-        public async Task<ActionResult<IEnumerable<Transaction>>> GetAccountHistory(int accountId)
+        [HttpGet("History/{accountId}")]
+        public async Task<IActionResult> GetAccountHistory(int accountId, [FromQuery] int pageNumber = 1, [FromQuery] int pageSize = 10)
         {
-            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (!int.TryParse(userIdClaim, out int loggedInUserId))
-            {
-                return Unauthorized("Token inválido o malformado.");
-            }
+            int loggedInUserId = GetLoggedInUserId();
+            if (loggedInUserId == 0) return Unauthorized("Token inválido o malformado.");
 
-            // Validación IDOR: verificar que la cuenta existe y pertenece al usuario logueado
-            var account = await _context.Accounts.FindAsync(accountId);
-            if (account == null)
-            {
-                return NotFound("La cuenta no existe.");
-            }
-            if (account.UserId != loggedInUserId)
-            {
-                return Forbid();
-            }
+            var result = await _transactionService.GetAccountHistoryAsync(loggedInUserId, accountId, pageNumber, pageSize);
 
-            // Buscamos todas las transacciones donde la cuenta sea el origen O el destino
-            var history = await _context.Transactions
-                .Where(t => t.SourceAccountId == accountId || t.DestinationAccountId == accountId)
-                .OrderByDescending(t => t.Date) // Ordenamos de la más reciente a la más antigua
-                .ToListAsync();
-
-            if (!history.Any())
-            {
-                return NotFound("No se encontraron movimientos para esta cuenta.");
-            }
-
-            return Ok(history);
+            return HandleResult(result);
         }
-
-        // --- ACÁ TERMINA EL NUEVO MÉTODO GET ---
     }
 
     // Objeto para recibir los datos limpios desde internet
     public class TransferDto
     {
+        [Required(ErrorMessage = "La cuenta de origen es obligatoria.")]
         public int SourceAccountId { get; set; }
+
+        [Required(ErrorMessage = "La cuenta de destino es obligatoria.")]
         public int DestinationAccountId { get; set; }
+
+        [Required(ErrorMessage = "El monto es obligatorio.")]
+        [Range(0.01, double.MaxValue, ErrorMessage = "El monto a transferir debe ser mayor a cero.")]
         public decimal Amount { get; set; }
     }
 
     // Objeto para depósitos y retiros
     public class AccountOperationDto
     {
+        [Required(ErrorMessage = "El ID de la cuenta es obligatorio.")]
         public int AccountId { get; set; }
+
+        [Required(ErrorMessage = "El monto es obligatorio.")]
+        [Range(0.01, double.MaxValue, ErrorMessage = "El monto de la operación debe ser mayor a cero.")]
         public decimal Amount { get; set; }
     }
 }
