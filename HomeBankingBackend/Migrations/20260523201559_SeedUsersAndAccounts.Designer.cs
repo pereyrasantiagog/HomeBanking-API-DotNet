@@ -4,6 +4,7 @@ using HomeBankingBackend.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace HomeBankingBackend.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260523201559_SeedUsersAndAccounts")]
+    partial class SeedUsersAndAccounts
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -144,7 +147,7 @@ namespace HomeBankingBackend.Migrations
                             Email = "santiago@ejemplo.com",
                             FirstName = "Santiago",
                             LastName = "Perez",
-                            Password = "$2a$11$XNB/Y6OpOH0P4z3.egWGQelj09B6IvmaIJ9CQTJYDU1aXNF8Qxf5i"
+                            Password = "password123"
                         },
                         new
                         {
@@ -152,7 +155,7 @@ namespace HomeBankingBackend.Migrations
                             Email = "maria@ejemplo.com",
                             FirstName = "Maria",
                             LastName = "Gomez",
-                            Password = "$2a$11$Lk0FKuPttS9re2TsChcI1eM5jl2NxdVExQlPGeBSVytbqL2FtEGM6"
+                            Password = "password456"
                         });
                 });
 

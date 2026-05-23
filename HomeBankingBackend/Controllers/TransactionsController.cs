@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using HomeBankingBackend.Data;
 using HomeBankingBackend.Models;
 using Microsoft.AspNetCore.Authorization;
+using System.Security.Claims;
 
 namespace HomeBankingBackend.Controllers
 {
@@ -21,6 +22,12 @@ namespace HomeBankingBackend.Controllers
         [HttpPost("Transfer")]
         public async Task<IActionResult> Transfer([FromBody] TransferDto request)
         {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!int.TryParse(userIdClaim, out int loggedInUserId))
+            {
+                return Unauthorized("Token inválido o malformado.");
+            }
+
             // 1. Validaciones básicas
             if (request.Amount <= 0)
                 return BadRequest("El monto a transferir debe ser mayor a cero.");
@@ -39,6 +46,11 @@ namespace HomeBankingBackend.Controllers
 
                 if (sourceAccount == null || destinationAccount == null)
                     return NotFound("Una o ambas cuentas no existen.");
+
+                if (sourceAccount.UserId != loggedInUserId)
+                {
+                    return Forbid();
+                }
 
                 // Verificar si hay saldo suficiente
                 if (sourceAccount.Balance < request.Amount)
@@ -77,6 +89,12 @@ namespace HomeBankingBackend.Controllers
         [HttpPost("Deposit")]
         public async Task<IActionResult> Deposit([FromBody] AccountOperationDto request)
         {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!int.TryParse(userIdClaim, out int loggedInUserId))
+            {
+                return Unauthorized("Token inválido o malformado.");
+            }
+
             if (request.Amount <= 0)
                 return BadRequest("El monto a depositar debe ser mayor a cero.");
 
@@ -84,6 +102,11 @@ namespace HomeBankingBackend.Controllers
             var account = await _context.Accounts.FindAsync(request.AccountId);
             if (account == null)
                 return NotFound("La cuenta no existe.");
+
+            if (account.UserId != loggedInUserId)
+            {
+                return Forbid();
+            }
 
             // 2. Sumamos la plata
             account.Balance += request.Amount;
@@ -109,6 +132,12 @@ namespace HomeBankingBackend.Controllers
         [HttpPost("Withdraw")]
         public async Task<IActionResult> Withdraw([FromBody] AccountOperationDto request)
         {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!int.TryParse(userIdClaim, out int loggedInUserId))
+            {
+                return Unauthorized("Token inválido o malformado.");
+            }
+
             if (request.Amount <= 0)
                 return BadRequest("El monto a retirar debe ser mayor a cero.");
 
@@ -116,6 +145,11 @@ namespace HomeBankingBackend.Controllers
             var account = await _context.Accounts.FindAsync(request.AccountId);
             if (account == null)
                 return NotFound("La cuenta no existe.");
+
+            if (account.UserId != loggedInUserId)
+            {
+                return Forbid();
+            }
 
             // 2. Verificamos que tenga saldo suficiente
             if (account.Balance < request.Amount)
@@ -146,6 +180,23 @@ namespace HomeBankingBackend.Controllers
         [HttpGet("Account/{accountId}")]
         public async Task<ActionResult<IEnumerable<Transaction>>> GetAccountHistory(int accountId)
         {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!int.TryParse(userIdClaim, out int loggedInUserId))
+            {
+                return Unauthorized("Token inválido o malformado.");
+            }
+
+            // Validación IDOR: verificar que la cuenta existe y pertenece al usuario logueado
+            var account = await _context.Accounts.FindAsync(accountId);
+            if (account == null)
+            {
+                return NotFound("La cuenta no existe.");
+            }
+            if (account.UserId != loggedInUserId)
+            {
+                return Forbid();
+            }
+
             // Buscamos todas las transacciones donde la cuenta sea el origen O el destino
             var history = await _context.Transactions
                 .Where(t => t.SourceAccountId == accountId || t.DestinationAccountId == accountId)
