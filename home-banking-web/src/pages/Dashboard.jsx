@@ -49,6 +49,37 @@ const Dashboard = () => {
     navigate('/login');               // Redirigimos al Login
   };
 
+  // Función para manejar el depósito de dinero
+  const handleDeposit = async () => {
+    const amountStr = window.prompt('Ingrese el monto a depositar:');
+    if (!amountStr) return;
+
+    const amount = parseFloat(amountStr);
+    if (isNaN(amount) || amount <= 0) {
+      alert('Por favor, ingrese un monto válido mayor a cero.');
+      return;
+    }
+
+    try {
+      const res = await api.post('/Transactions/Deposit', { accountId: account.id, amount });
+      
+      if (res.status === 200) {
+        // Actualizamos el saldo en el estado
+        setAccount(prev => ({ ...prev, balance: res.data.newBalance }));
+        
+        // Agregamos la nueva transacción al inicio de la lista
+        if (res.data.transaction) {
+          setTransactions(prev => [res.data.transaction, ...prev]);
+        }
+        
+        alert('Depósito realizado con éxito.');
+      }
+    } catch (err) {
+      console.error('Error al depositar:', err);
+      alert('Hubo un error al procesar el depósito. Inténtalo más tarde.');
+    }
+  };
+
   // Helper para formatear fechas
   const formatDate = (dateString) => {
     if (!dateString) return '-';
@@ -107,9 +138,9 @@ const Dashboard = () => {
         <section className="actions-section">
           <h2>Acciones Rápidas</h2>
           <div className="action-buttons">
+            <button className="btn-primary" onClick={handleDeposit}>Depositar</button>
             <button className="btn-primary">Transferir</button>
             <button className="btn-primary">Pagar Servicios</button>
-            <button className="btn-primary">Mis Tarjetas</button>
           </div>
         </section>
 

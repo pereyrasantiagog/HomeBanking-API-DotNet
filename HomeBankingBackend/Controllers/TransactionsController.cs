@@ -126,4 +126,13 @@ namespace HomeBankingBackend.Controllers
         [Range(0.01, double.MaxValue, ErrorMessage = "El monto de la operación debe ser mayor a cero.")]
         public decimal Amount { get; set; }
     }
+
+    public class DepositDto
+    {
+        [Required(ErrorMessage = "El monto es obligatorio.")]
+        [Range(0.01, double.MaxValue, ErrorMessage = "El monto a depositar debe ser mayor a cero.")]
+        public decimal Amount { get; set; }
+
+        public string? Description { get; set; }
+    }
 }
