@@ -6,6 +6,8 @@ using HomeBankingBackend.Services;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using HomeBankingBackend.Data;
+using Microsoft.EntityFrameworkCore;
 
 namespace HomeBankingBackend.Controllers
 {
@@ -15,10 +17,12 @@ namespace HomeBankingBackend.Controllers
     public class TransactionsController : ControllerBase
     {
         private readonly ITransactionService _transactionService;
+        private readonly AppDbContext _context;
 
-        public TransactionsController(ITransactionService transactionService)
+        public TransactionsController(ITransactionService transactionService, AppDbContext context)
         {
             _transactionService = transactionService;
+            _context = context;
         }
 
         private int GetLoggedInUserId()
@@ -83,13 +87,16 @@ namespace HomeBankingBackend.Controllers
             return HandleResult(result);
         }
 
-        [HttpGet("History/{accountId}")]
-        public async Task<IActionResult> GetAccountHistory(int accountId, [FromQuery] int pageNumber = 1, [FromQuery] int pageSize = 10)
+        [HttpGet("History")]
+        public async Task<IActionResult> GetAccountHistory([FromQuery] int pageNumber = 1, [FromQuery] int pageSize = 10)
         {
             int loggedInUserId = GetLoggedInUserId();
             if (loggedInUserId == 0) return Unauthorized("Token inválido o malformado.");
 
-            var result = await _transactionService.GetAccountHistoryAsync(loggedInUserId, accountId, pageNumber, pageSize);
+            var userAccount = await _context.Accounts.FirstOrDefaultAsync(a => a.UserId == loggedInUserId);
+            if (userAccount == null) return NotFound("No se encontró una cuenta para este usuario.");
+
+            var result = await _transactionService.GetAccountHistoryAsync(loggedInUserId, userAccount.Id, pageNumber, pageSize);
 
             return HandleResult(result);
         }

@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: 'http://localhost:5284/api', // Ajustar el puerto si el backend .NET usa uno diferente (ej. 5217 o 7000)
+  baseURL: 'http://127.0.0.1:5284/api',
 });
 
 // Interceptor de peticiones para agregar el token JWT automáticamente

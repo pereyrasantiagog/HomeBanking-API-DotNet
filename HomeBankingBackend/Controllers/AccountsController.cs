@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using HomeBankingBackend.Data;
 using HomeBankingBackend.Models;
+using Microsoft.AspNetCore.Authorization;
+using System.Security.Claims;
 
 namespace HomeBankingBackend.Controllers
 {
@@ -16,12 +18,49 @@ namespace HomeBankingBackend.Controllers
             _context = context;
         }
 
+        // GET: api/Accounts/MyAccount
+        // Trae la cuenta del usuario logueado usando su Token JWT
+        [HttpGet("MyAccount")]
+        [Authorize]
+        public async Task<ActionResult<Account>> GetMyAccount()
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!int.TryParse(userIdClaim, out int userId))
+            {
+                return Unauthorized("Token inválido.");
+            }
+
+            var account = await _context.Accounts.FirstOrDefaultAsync(a => a.UserId == userId);
+
+            if (account == null)
+            {
+                return NotFound("No se encontró una cuenta para este usuario.");
+            }
+
+            return account;
+        }
+
         // GET: api/Accounts
         // Trae todas las cuentas existentes
         [HttpGet]
         public async Task<ActionResult<IEnumerable<Account>>> GetAccounts()
         {
             return await _context.Accounts.ToListAsync();
+        }
+
+        // GET: api/Accounts/5
+        // Trae una cuenta específica por su ID
+        [HttpGet("{id}")]
+        public async Task<ActionResult<Account>> GetAccount(int id)
+        {
+            var account = await _context.Accounts.FindAsync(id);
+
+            if (account == null)
+            {
+                return NotFound();
+            }
+
+            return account;
         }
 
         // POST: api/Accounts

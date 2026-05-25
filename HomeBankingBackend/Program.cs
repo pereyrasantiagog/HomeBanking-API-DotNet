@@ -6,6 +6,8 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using Microsoft.OpenApi.Models;
 
+using System.Text.Json.Serialization;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // --- INICIO CONFIGURACIÓN CORS ---
@@ -49,7 +51,10 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 // Registrar la capa de servicios
 builder.Services.AddScoped<ITransactionService, TransactionService>();
 
-builder.Services.AddControllers();
+builder.Services.AddControllers().AddJsonOptions(options =>
+{
+    options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
+});
 builder.Services.AddEndpointsApiExplorer();
 // --- INICIO CONFIGURACIÓN SWAGGER CON JWT ---
 builder.Services.AddSwaggerGen(c =>

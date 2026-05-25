@@ -11,9 +11,6 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // ID estático temporal (tal como se solicitó)
-  const TEMP_ACCOUNT_ID = 1;
-
   useEffect(() => {
     // Función para obtener los datos al montar el componente
     const fetchDashboardData = async () => {
@@ -21,27 +18,17 @@ const Dashboard = () => {
         setLoading(true);
         setError(null);
 
-        // 1. Consultar el saldo
-        // Intentamos el endpoint 'MyAccount', si no existe aún, hacemos fallback al ID temporal
-        let accountData = null;
-        try {
-          const accountRes = await api.get('/Accounts/MyAccount');
-          accountData = accountRes.data;
-        } catch (err) {
-          // Fallback temporal si /Accounts/MyAccount no está implementado en el backend
-          const accountFallbackRes = await api.get(`/Accounts/${TEMP_ACCOUNT_ID}`);
-          accountData = accountFallbackRes.data;
-        }
+        // 1. Consultar el saldo con la ruta protegida que lee del token
+        const accountRes = await api.get('/Accounts/MyAccount');
+        const accountData = accountRes.data;
 
-        // 2. Consultar el historial de transacciones con paginación
-        const txRes = await api.get(`/Transactions/History/${TEMP_ACCOUNT_ID}?pageNumber=1&pageSize=10`);
+        // 2. Consultar el historial de transacciones con la nueva ruta sin ID
+        const txRes = await api.get('/Transactions/History?pageNumber=1&pageSize=10');
 
         // Actualizamos los estados
-        setAccount(accountData);
+        setAccount(accountData || null);
 
         // Dependiendo de cómo devuelva la paginación el backend, extraemos la data
-        // Si el backend devuelve { data: [...], totalRecords: X }, usamos txRes.data.data
-        // Si devuelve directamente el array, usamos txRes.data
         const txList = txRes.data.data || txRes.data.items || txRes.data;
         setTransactions(Array.isArray(txList) ? txList : []);
 
@@ -108,7 +95,7 @@ const Dashboard = () => {
                 $ {account.balance !== undefined ? account.balance.toFixed(2) : '0.00'}
               </p>
               <p className="account-number">
-                Nro: {account.number || `0000${TEMP_ACCOUNT_ID}`}
+                Nro: {account.number || 'No asignado'}
               </p>
             </div>
           ) : (
